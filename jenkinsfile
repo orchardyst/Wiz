@@ -1,0 +1,58 @@
+pipeline {
+    agent any
+
+    environment {
+        AWS_DEFAULT_REGION = 'us-east-1'
+        PROJECT_NAME = 'wiz-project'
+    }
+
+    stages {
+        stage('Install Helm') {
+            steps {
+                sh '''
+                    curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+                    chmod 700 get_helm.sh
+                    ./get_helm.sh
+                '''
+            }
+        }
+
+        stage('Terraform Init') {
+            steps {
+                dir('terraform') {
+                    sh 'terraform init'
+                }
+            }
+        }
+
+        stage('Terraform Apply') {
+            steps {
+                dir('terraform') {
+                    sh 'terraform apply -auto-approve'
+                }
+            }
+        }
+
+        stage('Helm Init') {
+            steps {
+                script {
+                    def helmHome = sh(script: 'helm home', returnStdout: true).trim()
+                    if (!fileExists("${helmHome}/repository/repositories.yaml")) {
+                        sh 'helm repo add stable https://charts.helm.sh/stable'
+                    }
+                }
+            }
+        }
+
+        stage('Helm Deploy') {
+            steps {
+                dir('helm/webapp') {
+                    script {
+                        sh 'helm package .'
+                        sh 'helm upgrade --install webapp ./webapp-0.1.0.tgz --set image.repository=your-docker-image'
+                    }
+                }
+            }
+        }
+    }
+}
